@@ -1,0 +1,195 @@
+part of 'movie_details_screen.dart';
+
+class _DetailsScreenState extends State<MovieDetailsScreen> {
+  DetailsViewModel detailsViewModel = DetailsViewModel();
+  SuggestionsViewModel suggestionsViewModel = SuggestionsViewModel();
+
+  @override
+  void dispose() {
+    detailsViewModel.close();
+    suggestionsViewModel.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final moviesId = ModalRoute.of(context)!.settings.arguments as int;
+    final width = context.width;
+    final height = context.height;
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: AppColors.backgroundColor,
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              BlocProvider(
+                create: (context) =>
+                    detailsViewModel
+                      ..getMovieDetailsBySourceId(sourceId: moviesId),
+                child: BlocConsumer<DetailsViewModel, DetailsStats>(
+                  listener: (context, state) {
+                    if (state is MovieDetailsSuccess) {
+                      final details = state.movie.movie!;
+                      context.read<HistoryCubit>().add(
+                        SavedMovie(
+                          id: moviesId,
+                          title: details.title ?? '',
+                          posterUrl: details.mediumCoverImage ?? '',
+                          rating: details.rating ?? 0,
+                        ),
+                      );
+                    }
+                  },
+                  builder: (context, state) {
+                    if (state is MovieDetailsSuccess) {
+                      final details = state.movie.movie!;
+                      final movie = SavedMovie(
+                        id: moviesId,
+                        title: details.title ?? '',
+                        posterUrl: details.mediumCoverImage ?? '',
+                        rating: details.rating ?? 0,
+                      );
+                      void watch() {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) {
+                              return MoviesWebView(movieDetails: details);
+                            },
+                          ),
+                        );
+                      }
+
+                      return Column(
+                        children: [
+                          Stack(
+                            children: [
+                              MoviePoster(
+                                imageUrl: details.mediumCoverImage ?? '',
+                              ),
+                              const MovieGradient(),
+                              Positioned(
+                                top: height * .25,
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                  child: IconButton(
+                                    onPressed: watch,
+                                    icon: Image.asset(
+                                      AppAssets.playVideo,
+                                      width: 97,
+                                      height: 97,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              BlocBuilder<WatchListCubit, WatchListState>(
+                                builder: (context, watchList) =>
+                                    MovieDetailsActions(
+                                      isSelected: watchList.isSaved(moviesId),
+                                      onBackTap: () {
+                                        Navigator.pop(context);
+                                      },
+                                      onBookmarkTap: () {
+                                        context.read<WatchListCubit>().toggle(
+                                          movie,
+                                        );
+                                      },
+                                    ),
+                              ),
+                              MovieDetailsContent(
+                                details: details,
+                                onPressedWatch: watch,
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    }
+                    if (state is MovieDetailsError) {
+                      return CustomErrorWidget(
+                        error: state.errorMessage,
+                        onRetry: () {
+                          detailsViewModel.getMovieDetailsBySourceId(
+                            sourceId: moviesId,
+                          );
+                        },
+                      );
+                    }
+                    return CustomLoadingWidget();
+                  },
+                ),
+              ),
+              SizedBox(height: height * .016),
+              BlocProvider(
+                create: (context) =>
+                    suggestionsViewModel
+                      ..getMovieSuggestions(sourceId: moviesId),
+                child: BlocBuilder<SuggestionsViewModel, SuggestionsStats>(
+                  builder: (context, state) {
+                    if (state is MovieSuggestionsSuccess) {
+                      return Padding(
+                        padding: EdgeInsets.symmetric(horizontal: width * .02),
+                        child: Column(
+                          children: [
+                            SimilarMovies(
+                              movies: state.movies,
+                              onMovieTap: (movie) {
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.detailsRouteName,
+                                  arguments: movie.id,
+                                );
+                              },
+                            ),
+
+                            BlocBuilder<DetailsViewModel, DetailsStats>(
+                              bloc: detailsViewModel,
+                              builder: (context, detailsState) {
+                                if (detailsState is! MovieDetailsSuccess) {
+                                  return const SizedBox.shrink();
+                                }
+                                final currentMovie = detailsState.movie.movie;
+                                return Column(
+                                  children: [
+                                    MovieSummary(
+                                      summary:
+                                          currentMovie?.descriptionFull ??
+                                          currentMovie?.descriptionIntro ??
+                                          "",
+                                    ),
+                                    MovieGenres(
+                                      genres: currentMovie?.genres ?? const [],
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                            SizedBox(height: height * .01),
+                          ],
+                        ),
+                      );
+                    }
+
+                    if (state is MovieSuggestionsError) {
+                      return CustomErrorWidget(
+                        error: state.errorMessage,
+                        onRetry: () {
+                          suggestionsViewModel.getMovieSuggestions(
+                            sourceId: moviesId,
+                          );
+                        },
+                      );
+                    }
+
+                    return CustomLoadingWidget();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
